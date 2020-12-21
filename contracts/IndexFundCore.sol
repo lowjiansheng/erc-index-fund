@@ -4,17 +4,21 @@ pragma solidity >=0.4.22 <0.8.0;
 import "@chainlink/contracts/src/v0.6/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+import "./IndexFundToken.sol";
+
 // This index fund will take in Eth and buy the top 20 ERC20 tokens according to index distribution
 // This is a test contract for the Kovan network
 // The purchase will be triggered everyday
 contract IndexFundCore {
-    
-    uint256 public totalUnspentEth;
+
+    FundToken public indexFundToken;
+
+    uint256 public totalDepositedEth;
     mapping(address => uint256) public userDepositedAmount;
     address[] usersDeposited;
 
     uint256 public totalUnwithdrawnTokens;
-    mapping(address => uint256) public userWithdrawnAmount;
+    mapping(address => uint256) public usersWithdrawnAmount;
     address payable[] usersWithdrawn;
 
     // This NAV will be calculated daily at the end of the day. Expressed in ETH.
@@ -43,7 +47,9 @@ contract IndexFundCore {
         priceFeed = AggregatorV3Interface(
             0x9326BFA02ADD2366b30bacB125260Af641031331
         );
-        totalUnspentEth = 0;
+        indexFundToken = new FundToken();
+        totalDepositedEth = 0;
+        nav = 0;
     }
 
     // User calls this to deposit their Eths. The Eths do not immediately purchase the underlying tokens. These will be purchased at the end of the day.
@@ -52,7 +58,7 @@ contract IndexFundCore {
         address user = msg.sender;
 
         userDepositedAmount[user] = amountOfEthDeposited;
-        totalUnspentEth = totalUnspentEth + amountOfEthDeposited;
+        totalDepositedEth = totalDepositedEth + amountOfEthDeposited;
     }
 
     // Users will call this function to redeem their tokens for Eth. Their tokens will be held by the contract until end of day.
@@ -60,11 +66,11 @@ contract IndexFundCore {
     // amountToWithdraw is the number of units of Fund Tokens to be withdrawn
     function redeemFunds(uint32 amountToWithdraw) public payable {
         totalUnwithdrawnTokens = totalUnwithdrawnTokens + amountToWithdraw;
-        userWithdrawnAmount[msg.sender] = amountToWithdraw;
+        usersWithdrawnAmount[msg.sender] = amountToWithdraw;
+        usersWithdrawn.push(msg.sender);
 
-        IERC20 tokenFund = IERC20(fundToken);
         // contract will withhold the token amount first until end of day
-        tokenFund.transferFrom(msg.sender, address(this), amountToWithdraw);
+        indexFundToken.transferFrom(msg.sender, address(this), amountToWithdraw);
     }
 
     /** 
@@ -74,36 +80,73 @@ contract IndexFundCore {
     Redeem units for any new redemptions.
     Calculates new NAV.
      */
+    // TODO: come up with a fee mechanism to pay for gas
     function fundManagement() public payable {
-        nav = calculateCurrentNAV();
-        purchaseAndRedeem();
+        
+        if (nav == 0) {
+            // then number of tokens should be 0 as well. else the contract is broken
+            assert(indexFundToken.totalSupply() == 0);
+
+            initialPurchaseAndTokenValuation();
+        } else {
+            purchaseAndRedeem();
+        }
     }
 
-    function purchaseAndRedeem() public payable {
-        uint256 numTokens = 100000;
-        uint256 navPerToken = nav / numTokens;
+    function initialPurchaseAndTokenValuation() private {
+        // Always mint 100 tokens as a base value
 
-        int256 netDeposits = int256(totalUnspentEth) -
+        // buy underlying tokens
+
+        nav = calculateCurrentNAV();
+        uint256 navPerToken = nav / indexFundToken.totalSupply();
+
+        for (uint i = 0; i < usersDeposited.length; i++) {
+            indexFundToken.mintToken(usersDeposited[i], userDepositedAmount[usersDeposited[i]] / navPerToken);
+            
+            delete userDepositedAmount[usersDeposited[i]];
+            delete usersDeposited[i];
+        }
+        totalDepositedEth = 0;
+
+    }
+
+    function purchaseAndRedeem() private {
+
+        nav = calculateCurrentNAV();
+
+        uint256 navPerToken = nav / indexFundToken.totalSupply();
+
+        int256 netDeposits = int256(totalDepositedEth) -
             (int256(totalUnwithdrawnTokens) * int256(navPerToken));
         if (netDeposits > 0) {
-            // return ETH to withdrawers
-            for (uint256 i = 0; i < usersWithdrawn.length; i++) {
-                usersWithdrawn[i].transfer(
-                    userWithdrawnAmount[usersWithdrawn[i]] * navPerToken
-                );
-                // TODO: burn token
-            }
-
             // buy underlying ERC tokens
-
-            // mint new tokens and send to depositers
-            for (uint256 i = 0; i < usersDeposited.length; i++) {
-                // TODO: mint new tokens based on NAV
-            }
-        } else {
+        } else {    // more withdrawals than deposits
             // sell underlying tokens
-            // send Eth
         }
+
+        // return ETH to withdrawers
+        for (uint i = 0; i < usersWithdrawn.length; i++) {
+            // this might be a wrong calculation
+            usersWithdrawn[i].transfer(
+                usersWithdrawnAmount[usersWithdrawn[i]] * navPerToken
+            );
+            indexFundToken.burnToken(address(this), totalUnwithdrawnTokens);
+
+            delete usersWithdrawnAmount[usersWithdrawn[i]];
+            delete usersWithdrawn[i];
+        }
+        totalUnwithdrawnTokens = 0;
+
+        // mint new tokens and send to depositers
+        for (uint i = 0; i < usersDeposited.length; i++) {
+            indexFundToken.mintToken(usersDeposited[i], userDepositedAmount[usersDeposited[i]] / navPerToken);
+            
+            delete userDepositedAmount[usersDeposited[i]];
+            delete usersDeposited[i];
+        }
+        totalDepositedEth = 0;
+
     }
 
     function calculateCurrentNAV() private returns (uint256) {

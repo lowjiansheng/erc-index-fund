@@ -19,11 +19,11 @@ contract FundToken is ERC20 {
         indexFundCore = msg.sender;
     }
 
-    function mintToken(address account, uint32 amount) public onlyIndexFundContract {
+    function mintToken(address account, uint256 amount) public onlyIndexFundContract {
         _mint(account, amount);
     }
 
-    function burnToken(address account, uint32 amount) public onlyIndexFundContract {
+    function burnToken(address account, uint256 amount) public onlyIndexFundContract {
         _burn(account, amount);
     }
 
