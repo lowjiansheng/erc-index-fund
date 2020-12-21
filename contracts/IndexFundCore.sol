@@ -3,6 +3,7 @@ pragma solidity >=0.4.22 <0.8.0;
 
 import "@chainlink/contracts/src/v0.6/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@uniswap/v2-periphery/contracts/UniswapV2Router02.sol";
 
 import "./IndexFundToken.sol";
 
@@ -25,18 +26,18 @@ contract IndexFundCore {
     uint256 public nav;
 
     struct TokenInformation {
-        uint256 marketCap;
+        uint marketCap;
         address tokenAddress;
-        uint256 tokenBalance;
+        uint tokenBalance;
+        uint tokenPrice;        
     }
     string[] public tokens;
-    mapping(string => TokenInformation) _tokenInformation;
-    uint64 _totalTokensMarketCap;
+    mapping(string => TokenInformation) tokensInformation;
+
+    uint64 totalTokensMarketCap;
 
     AggregatorV3Interface internal priceFeed;
-
-    // input correct address of token
-    address fundToken = 0x9326BFA02ADD2366b30bacB125260Af641031331;
+    UniswapV2Router02 internal uniswap;
 
     /**
      * Network: Kovan
@@ -82,7 +83,6 @@ contract IndexFundCore {
      */
     // TODO: come up with a fee mechanism to pay for gas
     function fundManagement() public payable {
-        
         if (nav == 0) {
             // then number of tokens should be 0 as well. else the contract is broken
             assert(indexFundToken.totalSupply() == 0);
@@ -94,12 +94,12 @@ contract IndexFundCore {
     }
 
     function initialPurchaseAndTokenValuation() private {
-        // Always mint 100 tokens as a base value
-
         // buy underlying tokens
 
         nav = calculateCurrentNAV();
-        uint256 navPerToken = nav / indexFundToken.totalSupply();
+        
+        // Always mint 100 tokens as a base value
+        uint256 navPerToken = nav / 100;
 
         for (uint i = 0; i < usersDeposited.length; i++) {
             indexFundToken.mintToken(usersDeposited[i], userDepositedAmount[usersDeposited[i]] / navPerToken);
@@ -152,34 +152,41 @@ contract IndexFundCore {
     function calculateCurrentNAV() private returns (uint256) {
         for (uint256 i = 0; i < tokens.length; i++) {
             IERC20 _ercToken = IERC20(
-                _tokenInformation[tokens[i]].tokenAddress
+                tokensInformation[tokens[i]].tokenAddress
             );
             uint256 _tokenBalance = _ercToken.balanceOf(address(this));
             return _tokenBalance * uint256(getLatestTokenPrice());
         }
     }
 
-    // swapToken will call uniswap to swap Eth to the token from the parameter
-    function swapToken(address tokenAddress) public {}
-
-    // This function will be run every night to rebalance all the tokens and do the necessary swaps
-    /*
-    function rebalanceTokens() public {
-        uint256 _totalNAV = calculateCurrentNAV();
-
-        for (uint256 i = 0; i < tokens.length; i++) {
-            uint256 _tokenTargetPercentage = _tokenInformation[tokens[i]]
-                .marketCap / _totalTokensMarketCap;
-
-            IERC20 _ercToken = IERC20(
-                _tokenInformation[tokens[i]].tokenAddress
-            );
-            uint256 _currentBalance = _ercToken.balanceOf(address(this));
-
-            uint256 _currentTokenPercentage = _currentBalance / _totalNAV;
+    // buyTokens will purchase tokens based on the % of the tokens specified
+    function buyTokens() private {
+        for (uint i = 0 ; i < tokens.length; i++) {
+            uint percentageOfToken = tokensInformation[tokens[i]].marketCap / totalTokensMarketCap;
+            uint amountEthToSwap = totalDepositedEth * percentageOfToken;
+            this.swapToken(tokensInformation[tokens[i]].tokenAddress, amountEthToSwap);
         }
     }
-*/
+
+    // swapToken will call uniswap to swap Eth to the token from the parameter
+    // there will be some spread difference 
+    function swapToken(TokenInformation tokenToSwap, uint amountEthToSwap) public {
+        IERC20 token = IERC20(tokenAddress);
+        address uniswapRouterAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+        
+        address WETHAddress = UniswapV2Router02.WETH();
+        
+        // for now assume there's always liquidity and a direct pair.
+        // TODO: will need to make this programatic
+        address payable [] path;
+        path.push(WETHAddress);
+        path.push(tokenToSwap.tokenAddress);
+
+        // TODO: should do a 1% spread
+        uint amountOutMin = amountEthToSwap / tokenToSwap.tokenPrice;
+        UniswapV2Router02.swapExactETHForTokens(amountOutMin, path, address(this), now + 100000); // deadline is 100 seconds
+    }
+
     // TODO: correct implementation
     function getLatestTokenPrice() private returns (int256) {
         (
