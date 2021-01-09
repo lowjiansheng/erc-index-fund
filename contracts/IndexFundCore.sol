@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.4.22 <0.8.0;
 
-import "@chainlink/contracts/src/v0.6/interfaces/AggregatorV3Interface.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@uniswap/v2-periphery/contracts/UniswapV2Router02.sol";
+import {FundToken} from "./FundToken.sol";
 
-import "./IndexFundToken.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import "@chainlink/contracts/src/v0.6/interfaces/AggregatorV3Interface.sol";
+
+import {
+    UniswapV2Router02
+} from "@uniswap/v2-periphery/contracts/UniswapV2Router02.sol";
 
 // This index fund will take in Eth and buy the top 20 ERC20 tokens according to index distribution
 // This is a test contract for the Kovan network
 // The purchase will be triggered everyday
 contract IndexFundCore {
-
     FundToken public indexFundToken;
 
     uint256 public totalDepositedEth;
@@ -26,10 +29,10 @@ contract IndexFundCore {
     uint256 public nav;
 
     struct TokenInformation {
-        uint marketCap;
+        uint256 marketCap;
         address tokenAddress;
-        uint tokenBalance;
-        uint tokenPrice;        
+        uint256 tokenBalance;
+        uint256 tokenPrice;
     }
     string[] public tokens;
     mapping(string => TokenInformation) tokensInformation;
@@ -37,6 +40,7 @@ contract IndexFundCore {
     uint64 totalTokensMarketCap;
 
     AggregatorV3Interface internal priceFeed;
+
     UniswapV2Router02 internal uniswap;
 
     /**
@@ -44,10 +48,12 @@ contract IndexFundCore {
      * Aggregator: ETH/USD
      * Address: 0x9326BFA02ADD2366b30bacB125260Af641031331
      */
-    constructor() {
+    constructor() public {
         priceFeed = AggregatorV3Interface(
             0x9326BFA02ADD2366b30bacB125260Af641031331
         );
+
+        uniswap = UniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         indexFundToken = new FundToken();
         totalDepositedEth = 0;
         nav = 0;
@@ -71,7 +77,12 @@ contract IndexFundCore {
         usersWithdrawn.push(msg.sender);
 
         // contract will withhold the token amount first until end of day
-        indexFundToken.transferFrom(msg.sender, address(this), amountToWithdraw);
+
+        indexFundToken.transferFrom(
+            msg.sender,
+            address(this),
+            amountToWithdraw
+        );
     }
 
     /** 
@@ -97,22 +108,23 @@ contract IndexFundCore {
         // buy underlying tokens
 
         nav = calculateCurrentNAV();
-        
+
         // Always mint 100 tokens as a base value
         uint256 navPerToken = nav / 100;
 
-        for (uint i = 0; i < usersDeposited.length; i++) {
-            indexFundToken.mintToken(usersDeposited[i], userDepositedAmount[usersDeposited[i]] / navPerToken);
-            
+        for (uint256 i = 0; i < usersDeposited.length; i++) {
+            indexFundToken.mintToken(
+                usersDeposited[i],
+                userDepositedAmount[usersDeposited[i]] / navPerToken
+            );
+
             delete userDepositedAmount[usersDeposited[i]];
             delete usersDeposited[i];
         }
         totalDepositedEth = 0;
-
     }
 
     function purchaseAndRedeem() private {
-
         nav = calculateCurrentNAV();
 
         uint256 navPerToken = nav / indexFundToken.totalSupply();
@@ -121,12 +133,13 @@ contract IndexFundCore {
             (int256(totalUnwithdrawnTokens) * int256(navPerToken));
         if (netDeposits > 0) {
             // buy underlying ERC tokens
-        } else {    // more withdrawals than deposits
+        } else {
+            // more withdrawals than deposits
             // sell underlying tokens
         }
 
         // return ETH to withdrawers
-        for (uint i = 0; i < usersWithdrawn.length; i++) {
+        for (uint256 i = 0; i < usersWithdrawn.length; i++) {
             // this might be a wrong calculation
             usersWithdrawn[i].transfer(
                 usersWithdrawnAmount[usersWithdrawn[i]] * navPerToken
@@ -139,14 +152,16 @@ contract IndexFundCore {
         totalUnwithdrawnTokens = 0;
 
         // mint new tokens and send to depositers
-        for (uint i = 0; i < usersDeposited.length; i++) {
-            indexFundToken.mintToken(usersDeposited[i], userDepositedAmount[usersDeposited[i]] / navPerToken);
-            
+        for (uint256 i = 0; i < usersDeposited.length; i++) {
+            indexFundToken.mintToken(
+                usersDeposited[i],
+                userDepositedAmount[usersDeposited[i]] / navPerToken
+            );
+
             delete userDepositedAmount[usersDeposited[i]];
             delete usersDeposited[i];
         }
         totalDepositedEth = 0;
-
     }
 
     function calculateCurrentNAV() private returns (uint256) {
@@ -161,30 +176,45 @@ contract IndexFundCore {
 
     // buyTokens will purchase tokens based on the % of the tokens specified
     function buyTokens() private {
-        for (uint i = 0 ; i < tokens.length; i++) {
-            uint percentageOfToken = tokensInformation[tokens[i]].marketCap / totalTokensMarketCap;
-            uint amountEthToSwap = totalDepositedEth * percentageOfToken;
-            this.swapToken(tokensInformation[tokens[i]].tokenAddress, amountEthToSwap);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            uint256 percentageOfToken = tokensInformation[tokens[i]].marketCap /
+                totalTokensMarketCap;
+            uint256 amountEthToSwap = totalDepositedEth * percentageOfToken;
+
+            this.swapToken(
+                tokensInformation[tokens[i]].tokenAddress,
+                amountEthToSwap,
+                tokensInformation[tokens[i]].tokenPrice
+            );
         }
     }
 
     // swapToken will call uniswap to swap Eth to the token from the parameter
-    // there will be some spread difference 
-    function swapToken(TokenInformation tokenToSwap, uint amountEthToSwap) public {
+    // there will be some spread difference
+
+    function swapToken(
+        address tokenAddress,
+        uint256 amountEthToSwap,
+        uint256 tokenPrice
+    ) public {
         IERC20 token = IERC20(tokenAddress);
-        address uniswapRouterAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
-        
-        address WETHAddress = UniswapV2Router02.WETH();
-        
+
+        address WETHAddress = uniswap.WETH();
+
         // for now assume there's always liquidity and a direct pair.
         // TODO: will need to make this programatic
-        address payable [] path;
-        path.push(WETHAddress);
-        path.push(tokenToSwap.tokenAddress);
+        address[] memory path;
+        path[0] = WETHAddress;
+        path[1] = tokenAddress;
 
         // TODO: should do a 1% spread
-        uint amountOutMin = amountEthToSwap / tokenToSwap.tokenPrice;
-        UniswapV2Router02.swapExactETHForTokens(amountOutMin, path, address(this), now + 100000); // deadline is 100 seconds
+        uint256 amountOutMin = amountEthToSwap / tokenPrice;
+        uniswap.swapExactETHForTokens(
+            amountOutMin,
+            path,
+            address(this),
+            now + 100000
+        ); // deadline is 100 seconds
     }
 
     // TODO: correct implementation

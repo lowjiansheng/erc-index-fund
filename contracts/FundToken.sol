@@ -15,16 +15,21 @@ contract FundToken is ERC20 {
     }
 
     // IndexFundCore should be the contract that deploys this contract
-    constructor() ERC20("ERCIndexFundToken", "EIFT") {
+    constructor() public ERC20("ERCIndexFundToken", "EIFT") {
         indexFundCore = msg.sender;
     }
 
-    function mintToken(address account, uint256 amount) public onlyIndexFundContract {
+    function mintToken(address account, uint256 amount)
+        public
+        onlyIndexFundContract
+    {
         _mint(account, amount);
     }
 
-    function burnToken(address account, uint256 amount) public onlyIndexFundContract {
+    function burnToken(address account, uint256 amount)
+        public
+        onlyIndexFundContract
+    {
         _burn(account, amount);
     }
-
 }
