@@ -62,9 +62,14 @@ contract('IndexFundSwapPrep', (addresses) => {
 
         it ('setup WETH & MockToken liquidity pool', async() => {
             const amountTokenDesired = tokens('0.1');
-            await mockToken.approve(indexFundSwapPrep.address, amountTokenDesired, {from: addresses[0]});
+            await mockToken.approve(indexFundSwapPrep.address, amountTokenDesired, 
+                {
+                    from: addresses[0]
+                });
 
-            truffleReceipt = await indexFundSwapPrep.setupWETHTokenPair(mockToken.address, amountTokenDesired);
+            truffleReceipt = await indexFundSwapPrep.setupWETHTokenPair(mockToken.address, amountTokenDesired, {
+                value: tokens('0.2')
+            });
 
             pairAddress = await indexFundSwapPrep.pairAddress.call();
         })

@@ -78,7 +78,7 @@ contract IndexFundSwapPrep {
         );
         createWETHPair(token);
 
-        uniswapRouter.addLiquidityETH(
+        uniswapRouter.addLiquidityETH{value: 0.1 ether}(
             token,
             amountTokenDesired,
             amountTokenDesired,
