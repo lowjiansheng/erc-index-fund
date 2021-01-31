@@ -53,17 +53,48 @@ contract('IndexFundSwapPrep', (addresses) => {
         })
 
         it ('setup WETH & MockToken liquidity pool', async() => {
-            const amountTokenDesired = tokens('100');
+            const amountTokenDesired = tokens('100')
+            const amountETHToAddToLiquidity = tokens('0.1')
+            const amountETHValue = tokens('0.15')
             await mockToken.approve(indexFundSwapPrep.address, amountTokenDesired, 
                 {
                     from: addresses[0]
                 });
 
-            truffleReceipt = await indexFundSwapPrep.setupWETHTokenPair(mockToken.address, amountTokenDesired, {
-                value: amountTokenDesired
-            });
+            truffleReceipt = await indexFundSwapPrep.setupWETHTokenPair(
+                mockToken.address,
+                amountETHToAddToLiquidity,
+                amountTokenDesired, 
+                {
+                    value: amountETHValue
+                }
+            );
             expectEvent(truffleReceipt, 'LiquidityAdded', {});
         })
+
+        it ('correctly estimateAmountOut', async() => {
+            const amountETHIn = tokens('0.05')
+            truffleReceipt = await indexFundSwapPrep.estimateAmountOut(
+                mockToken.address, 
+                amountETHIn
+            )
+            expectEvent(truffleReceipt, "AmountOut", {})
+        })
+        
+        it ("correctly make an ETH swap for tokens", async() => {
+            const amountETHToSwap = tokens("0.05")
+            const amountETHValue = tokens("0.25")
+            truffleReceipt = await debug(indexFundSwapPrep.swapETHForToken(
+                mockToken.address,
+                "50000000000000000",
+                {
+                    value: "1500000000000000000",
+                    from: addresses[0]
+                }
+            ))
+        })
+        
+        
         /*
         it('correctly swaps ETH for Token', async() => {
             truffleReceipt = await indexFundSwapPrep.swapEthForToken(mockToken.address, tokens('0.1'))

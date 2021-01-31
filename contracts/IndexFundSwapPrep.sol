@@ -50,10 +50,12 @@ contract IndexFundSwapPrep {
         emit FetchedWETHAddress(msg.sender);
     }
 
-    function setupWETHTokenPair(address token, uint256 amountTokenDesired)
-        public
-        payable
-    {
+    // make sure that amountETHInput < msg.value, if not transaction will be rejected
+    function setupWETHTokenPair(
+        address token,
+        uint256 amountETHInput,
+        uint256 amountTokenDesired
+    ) public payable {
         IERC20 mockToken = IERC20(token);
         mockToken.transferFrom(msg.sender, address(this), amountTokenDesired);
 
@@ -63,11 +65,11 @@ contract IndexFundSwapPrep {
         );
         createWETHPair(token);
 
-        uniswapRouter.addLiquidityETH{value: amountTokenDesired}(
+        uniswapRouter.addLiquidityETH{value: msg.value}(
             token,
             amountTokenDesired,
             amountTokenDesired,
-            msg.value,
+            amountETHInput,
             msg.sender,
             block.timestamp + 300
         );
@@ -79,16 +81,13 @@ contract IndexFundSwapPrep {
         emit ETHPairCreated();
     }
 
-    function estimateAmountOut(address token, uint256 amountIn)
-        public
-        returns (uint256)
-    {
+    function estimateAmountOut(address token, uint256 amountIn) public {
         address[] memory path = new address[](2);
-        path[0] = uniswapRouter.WETH();
+        path[0] = this.WETHAdd();
         path[1] = token;
         uint256[] memory amountOut =
             uniswapRouter.getAmountsOut(amountIn, path);
-        return amountOut[0];
+        emit AmountOut(amountOut[0]);
     }
 
     function pairInformation(address tokenA, address tokenB)
@@ -111,30 +110,19 @@ contract IndexFundSwapPrep {
     // this function is used for testing
     // wrapper function
 
-    /*
-    function addLiquidityETH(
-        address token,
-        uint256 amountTokenDesired,
-        uint256 amountTokenMin,
-        uint256 amountETHMin,
-        address to,
-        uint256 deadline
-    ) public {
-        uniswapRouter.addLiquidityETH();
-    }*/
-
-    function swapEthForToken(address tokenAddress, uint256 amountEthToSwap)
+    function swapETHForToken(address tokenAddress, uint256 amountEthToSwap)
         public
+        payable
     {
         address[] memory path = new address[](2);
-        path[0] = uniswapRouter.WETH();
+        path[0] = this.WETHAdd();
         path[1] = tokenAddress;
 
-        uniswapRouter.swapExactETHForTokens(
+        uniswapRouter.swapExactETHForTokens{value: msg.value}(
             amountEthToSwap,
             path,
             msg.sender,
-            block.timestamp
+            block.timestamp + 500
         );
 
         emit Swapped(amountEthToSwap, msg.sender);
