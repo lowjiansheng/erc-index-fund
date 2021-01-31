@@ -30,7 +30,7 @@ contract IndexFundSwapPrep {
     event FetchedWETHAddress(address user);
     event ETHPairCreated();
     event LiquidityAdded();
-    event AmountsInEth(uint256[] amountEth);
+    event AmountOut(uint256 amountOut);
 
     event DebugEvent(uint256 debugAmount);
 
@@ -50,21 +50,6 @@ contract IndexFundSwapPrep {
         emit FetchedWETHAddress(msg.sender);
     }
 
-    function getAmountsInETH(address token, uint256 tokenAmount)
-        public
-        returns (uint256[] memory)
-    {
-        address[] memory path = new address[](2);
-        path[0] = WETHAdd;
-        path[1] = token;
-
-        uint256[] memory amountInEth =
-            uniswapRouter.getAmountsIn(tokenAmount, path);
-        emit AmountsInEth(amountInEth);
-
-        return amountInEth;
-    }
-
     function setupWETHTokenPair(address token, uint256 amountTokenDesired)
         public
         payable
@@ -78,13 +63,13 @@ contract IndexFundSwapPrep {
         );
         createWETHPair(token);
 
-        uniswapRouter.addLiquidityETH{value: 0.1 ether}(
+        uniswapRouter.addLiquidityETH{value: amountTokenDesired}(
             token,
             amountTokenDesired,
             amountTokenDesired,
             msg.value,
             msg.sender,
-            block.timestamp
+            block.timestamp + 300
         );
         emit LiquidityAdded();
     }
@@ -92,6 +77,18 @@ contract IndexFundSwapPrep {
     function createWETHPair(address token) private {
         pairAddress = uniswapFactory.createPair(token, WETHAdd);
         emit ETHPairCreated();
+    }
+
+    function estimateAmountOut(address token, uint256 amountIn)
+        public
+        returns (uint256)
+    {
+        address[] memory path = new address[](2);
+        path[0] = uniswapRouter.WETH();
+        path[1] = token;
+        uint256[] memory amountOut =
+            uniswapRouter.getAmountsOut(amountIn, path);
+        return amountOut[0];
     }
 
     function pairInformation(address tokenA, address tokenB)

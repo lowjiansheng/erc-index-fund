@@ -44,41 +44,30 @@ contract('IndexFundSwapPrep', (addresses) => {
     describe('IndexFundSwapPrep', async() => {
         it('correctly deployed', async() => {
             const contractName = await indexFundSwapPrep.contractName.call();
-            assert.equal(contractName.toString(), "IndexFundSwapPrep");
+            assert.equal(contractName.toString(), 'IndexFundSwapPrep');
         })
 
         it ('correctly sets the WETH address', async() => {
             WETHAdd = await indexFundSwapPrep.WETHAdd.call();
-            assert.equal(WETHAdd.toString(), "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
+            assert.equal(WETHAdd.toString(), '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2')
         })
 
-        /*
-        it ('transfer mocktokens to smart contract', async() => {
-            await mockToken.transfer(indexFundSwapPrep.address, tokens('0.1'), {from : addresses[0]});
-            console.log(indexFundSwapPrep.address);
-            const amountContractHas = await mockToken.balanceOf(indexFundSwapPrep.address);
-            assert.equal(amountContractHas.toString(), tokens('0.1'));
-        })*/
-
         it ('setup WETH & MockToken liquidity pool', async() => {
-            const amountTokenDesired = tokens('0.1');
+            const amountTokenDesired = tokens('100');
             await mockToken.approve(indexFundSwapPrep.address, amountTokenDesired, 
                 {
                     from: addresses[0]
                 });
 
             truffleReceipt = await indexFundSwapPrep.setupWETHTokenPair(mockToken.address, amountTokenDesired, {
-                value: tokens('0.2')
+                value: amountTokenDesired
             });
-
-            pairAddress = await indexFundSwapPrep.pairAddress.call();
+            expectEvent(truffleReceipt, 'LiquidityAdded', {});
         })
         /*
-        it ('creates WETH & MockToken Pair', async() => {
-            truffleReceipt = await indexFundSwapPrep.createWETHPair(mockToken.address)
-            expectEvent(truffleReceipt, 'ETHPairCreated', {})
-
-            pairAddress = await indexFundSwapPrep.pairAddress.call()
+        it('correctly swaps ETH for Token', async() => {
+            truffleReceipt = await indexFundSwapPrep.swapEthForToken(mockToken.address, tokens('0.1'))
+            expectEvent(truffleReceipt, 'Swapped');
         })*/
 
     })
